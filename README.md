@@ -1,88 +1,85 @@
 # Education Telegram UserBot
 
-Django ishlatilmaydi.
+Telegram CRM built with Python, Telethon, Telegram Bot API, PostgreSQL and
+FastAPI. PostgreSQL (`psycopg2`) is the only application database. The
+UserBot captures customers only when they initiate a private chat; group and
+supergroup discovery is stored separately.
 
-Stack:
-- Telethon — Telegram UserBot
-- PostgreSQL — asosiy database
-- FastAPI — oddiy admin/API panel
-- Async scheduler — PostgreSQL jadvalidagi bir martalik, kunlik va haftalik xabarlar
+## Project layout
 
-## 1. Virtual environment
+```text
+app/
+  admin/       Telegram Bot API admin interface and feature workflows
+  core/        Environment configuration, constants and logging setup
+  database/    PostgreSQL schema and domain data access modules
+  panel/       FastAPI app, HTTP routes and environment services
+  scheduler/   PostgreSQL scheduled-message worker and daily reports
+  telegram/    Shared Telethon client, QR login, handlers and workers
+  utils/       Datetime and project data-file helpers
+data/
+  backups/     Generated database backup JSON
+  exports/     Generated database export JSON
+logs/          Application log files
+scripts/       Database initialization and backup commands
+tests/         Unit tests using mocked PostgreSQL connections
+
+run.py         UserBot entry point
+run_admin.py   Admin Bot entry point
+run_panel.py   FastAPI panel entry point
+```
+
+## Installation
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-## PostgreSQL
+Set `API_ID` and `API_HASH` using the credentials from
+[my.telegram.org](https://my.telegram.org). Fill in PostgreSQL connection
+settings and `ADMIN_BOT_TOKEN` in `.env`. Keep `.env` and the Telethon session
+private; neither belongs in source control or a shared backup.
 
-Ubuntu'da PostgreSQL o'rnatish:
+## PostgreSQL setup
 
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
-sudo systemctl enable --now postgresql
-```
-
-PostgreSQL user va database yarating:
+Create a PostgreSQL role and database (replace the password with a strong
+private value):
 
 ```bash
 sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER education_user WITH PASSWORD 'KUCHLI_PAROL';
+CREATE USER education_user WITH PASSWORD 'CHANGE_THIS_PRIVATE_PASSWORD';
 CREATE DATABASE education_center OWNER education_user;
 \q
 ```
 
-`.env`da:
+Set these values in `.env`:
 
 ```env
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=education_center
 DB_USER=education_user
-DB_PASSWORD=KUCHLI_PAROL
+DB_PASSWORD=CHANGE_THIS_PRIVATE_PASSWORD
 ```
 
-Python kutubxonasi:
+Initialize tables explicitly, or let any application entry point initialize
+them on startup:
 
 ```bash
-pip install -r requirements.txt
+python -m scripts.init_database
 ```
 
-### Database'ni noldan yaratish
-
-Quyidagi amallar `education_center` database'idagi barcha ma'lumotlarni
-butunlay o'chiradi. Kerakli ma'lumotlar bo'lsa, avval backup oling. Avval bot,
-panel va admin bot kabi database ishlatayotgan jarayonlarni to'xtating.
+The schema uses PostgreSQL `BOOLEAN` columns for message state and enabled
+flags. Verify those types with:
 
 ```bash
-sudo -u postgres dropdb --if-exists education_center
-sudo -u postgres createdb --owner=education_user education_center
-```
-
-`.env` ichidagi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-qiymatlari PostgreSQL sozlamalariga mosligini tekshirib, loyiha root
-papkasidan ishga tushiring:
-
-```bash
-source venv/bin/activate
-python bot.py
-```
-
-`bot.py` boshlanganda `db.init_db()` chaqirilib, `customers`, `messages`,
-`groups_`, `scheduled_messages`, `settings` jadvallari yaratiladi. Telegram
-QR login va `education_center.session` Telethon session avvalgidek ishlaydi.
-
-Schema turlarini tekshirish uchun:
-
-```bash
-sudo -u postgres psql -d education_center -c "
-SELECT table_name, column_name, data_type, column_default, is_nullable
+psql -d education_center -c "
+SELECT table_name, column_name, data_type, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND (table_name, column_name) IN (
@@ -94,183 +91,106 @@ WHERE table_schema = 'public'
 ORDER BY table_name, column_name;"
 ```
 
-To'rtta ustunning `data_type` qiymati `boolean` bo'lishi kerak.
+Every listed `data_type` should be `boolean`.
 
-Agar eski `data.sqlite3` ma'lumotlari bo'lsa, bir marta:
+To recreate the database from scratch, stop all project processes first.
+**The following deletes all data in the named database.** Back up any data
+that must be retained:
 
 ```bash
-python migrate_sqlite_to_postgres.py
+sudo -u postgres dropdb --if-exists education_center
+sudo -u postgres createdb --owner=education_user education_center
+python -m scripts.init_database
 ```
 
-## 2. Environment
+## Run the services
+
+Start the UserBot:
 
 ```bash
-cp .env.example .env
-nano .env
+python run.py
 ```
 
-`API_ID` va `API_HASH`ni https://my.telegram.org dan oling.
+On first login, scan the displayed QR code in Telegram at
+**Settings → Devices → Link Desktop Device**. The existing
+`education_center.session` session name is preserved.
 
-`ADMIN_CHAT_ID`ga monitoring xabarlari boradigan Telegram ID yozing.
-
-## 3. UserBotni ishga tushirish
+Start the Telegram Bot API Admin Bot in a separate terminal:
 
 ```bash
-source .venv/bin/activate
-python bot.py
+python run_admin.py
 ```
 
-Birinchi ishga tushishda Telegram login kodi va 2FA paroli so‘ralishi mumkin.
-Session fayl yaratiladi. Uni hech qayerga yubormang.
-
-## 4. Panel
-
-Ikkinchi terminal:
+Start the FastAPI panel in another terminal:
 
 ```bash
-source .venv/bin/activate
 python run_panel.py
 ```
 
-Panel:
-http://127.0.0.1:8000
+The panel defaults to `http://127.0.0.1:8000`. Sign in to the Uzbek-language
+dashboard with `PANEL_TOKEN` from `.env`; the panel keeps the login in an
+HttpOnly session cookie. API requests can continue to authenticate with the
+`X-Panel-Token` header.
 
-Panel API'lariga `X-Panel-Token` header orqali kiriladi.
+The Admin Bot uses Telegram Bot API only. It puts send requests in PostgreSQL;
+the one running UserBot process delivers them through its shared Telethon
+client. Do not start another Telethon client for the Admin Bot.
 
-Misol:
+## Configuration
 
-```bash
-curl -H "X-Panel-Token: change-this-token" http://127.0.0.1:8000/api/customers
-```
+Important `.env` settings:
 
-## Muhim
+- `API_ID`, `API_HASH`, `PHONE_NUMBER`: Telegram UserBot credentials.
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: PostgreSQL.
+- `ADMIN_BOT_TOKEN`: Telegram Bot API token.
+- `ADMIN_USER_ID`: Admin Bot allowlist; `0` retains the existing allow-all
+  behavior and should not be used in production.
+- `ADMIN_CHAT_ID`, `MONITOR_MINUTES`: unanswered-message notifications.
+- `REPORT_USER_ID`, `REPORT_TIME`, `REPORT_TIMEZONE`: daily report delivery.
+- `BACKUP_USER_ID`: optional backup recipient.
+- `SESSION_NAME`: defaults to `education_center`.
+- `PANEL_HOST`, `PANEL_PORT`, `PANEL_TOKEN`: web panel.
 
-- `.env`ni GitHubga yubormang.
-- `*.session`ni GitHubga yubormang.
-- Faqat o‘zingiz boshqaradigan guruhlarga scheduled message yoqing.
-- Telegram flood limitlariga rioya qiling.
+Group selection in the Admin Bot is temporary per-admin state. Discovered
+groups and queued messages persist in PostgreSQL. Customers are created only
+from incoming private messages; groups are never stored in `customers`.
 
-## Scheduled message
+## Backups and logs
 
-API orqali:
+The Admin Bot's JSON export is written under `data/exports/`; its backup
+action and the CLI backup command write under `data/backups/`. Export output
+filters setting keys that appear secret-bearing; it does not include `.env`
+or Telethon session files. Review generated backups as sensitive CRM data.
 
-```bash
-curl -X POST \
-  -H "X-Panel-Token: change-this-token" \
-  -H "Content-Type: application/json" \
-  -d '{"group_telegram_id":-1001234567890,"text":"Ertaga dars 18:00 da.","run_at":"2026-10-08T10:00:00+00:00","repeat":"once"}' \
-  http://127.0.0.1:8000/api/scheduled
-```
-
-`repeat`:
-- `once`
-- `daily`
-- `weekly`
-
-Scheduler har 10 soniyada due xabarlarni tekshiradi.
-
-
-## Admin panelda sozlash
-
-Panel API header talab qilgani sababli brauzerga oddiy URL bilan kirish hozircha token bermaydi.
-Terminaldan dashboardni ko‘rish:
+Run a backup manually:
 
 ```bash
-curl -H "X-Panel-Token: YOUR_PANEL_TOKEN" http://127.0.0.1:8000
+python -m scripts.backup_database
 ```
 
-Panelning keyingi versiyasida form-login qo‘shish mumkin. Hozir Telegram credentiallari uchun `.env` asosiy manba hisoblanadi.
+Application logs are written under `logs/`.
 
-API ID/HASH, telefon, admin ID va welcome message qiymatlarini paneldagi POST endpointlari orqali ham saqlash mumkin.
+## Tests
 
-## Telegram admin/configuration bot
-
-Bu loyiha endi ikkita Telegram komponentdan iborat:
-
-1. `bot.py` — UserBot. Mijozlardan kelgan private xabarlarni kuzatadi.
-2. `admin_bot.py` — oddiy Telegram Bot API admin bot. API ID, API HASH, telefon, admin ID, monitoring va welcome message'ni Telegram ichidan sozlashga yordam beradi.
-
-### Admin bot tokenini olish
-
-BotFather orqali yangi bot yarating va tokenni `.env`ga yozing:
-
-```env
-ADMIN_BOT_TOKEN=123456:ABC...
-ADMIN_USER_ID=123456789
-```
-
-`ADMIN_USER_ID` — konfiguratsiya botini boshqaradigan sizning Telegram ID'ingiz.
-
-### Admin botni ishga tushirish
+Tests mock the PostgreSQL connection and do not require a live Telegram login
+or PostgreSQL server:
 
 ```bash
-source .venv/bin/activate
-python admin_bot.py
+python -m unittest discover -v
+python -m compileall app scripts tests
 ```
 
-Botga `/start` yuboring.
+## Troubleshooting
 
-Menyu:
-- ⚙️ Telegram sozlamalari
-- 💬 Avtojavob
-- 📋 Guruhlar — UserBot topgan guruh/superguruhlarni tanlab xabar yuborish
-- 📊 Holat
-- 🆔 Mening ID
-- 💾 Database — PostgreSQL jadvallarini bitta JSON fayl qilib yuboradi
-
-Guruhlar `bot.py` ishga tushganda PostgreSQL `groups_` jadvaliga sinxronlanadi.
-Admin bir nechta guruh tanlab, xabarni tasdiqlaydi; `admin_bot.py` topshiriqni
-PostgreSQL navbatiga qo‘yadi, `bot.py` esa o‘zining mavjud Telethon session'i
-orqali yuboradi va har bir guruh bo‘yicha natijani admin botga qaytaradi.
-Tanlangan guruhlar adminning xotiradagi vaqtinchalik holati bo‘lib, bot qayta
-ishga tushganda tozalanadi. Navbat jadvali `db.init_db()` tomonidan yaratiladi:
-
-```sql
-CREATE TABLE IF NOT EXISTS group_message_jobs (
-    id BIGSERIAL PRIMARY KEY,
-    requested_by BIGINT NOT NULL,
-    group_telegram_ids BIGINT[] NOT NULL,
-    text TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    results JSONB,
-    created_at TEXT NOT NULL,
-    completed_at TEXT,
-    notified BOOLEAN NOT NULL DEFAULT FALSE
-);
-```
-
-API HASH maxfiy hisoblanadi va admin bot uni qayta ekranga chiqarib bermaydi.
-
-### Xavfsizlik
-
-API HASHni Telegram chatiga yuborish ham maxfiy ma'lumot uzatish hisoblanadi. Admin botga faqat o'zingizning Telegram ID'ingizga ruxsat bering va `ADMIN_BOT_TOKEN`, `.env`, `*.session` fayllarini GitHubga yubormang.
-
-
-## Admin Bot — pure Python
-
-`admin_bot.py` **aiogram ishlatmaydi**. Telegram Bot API bilan Python standard library (`urllib`) orqali ishlaydi.
-
-Har bir bo'limga kirilganda faqat:
-
-```text
-⬅️ Orqaga
-```
-
-tugmasi chiqadi.
-
-`⚙️ Telegram sozlamalari` bosilganda ketma-ket API ID → API HASH → telefon → admin ID → monitoring vaqti so'raladi.
-
-`💬 Avtojavob` bosilganda faqat welcome message kiritish oynasi va `⬅️ Orqaga` tugmasi chiqadi.
-
-Ishga tushirish:
-
-```bash
-source .venv/bin/activate
-python admin_bot.py
-```
-
-Agar avvalgi `aiogram` xatosi chiqqan bo'lsa, endi `aiogram` kerak emas:
-
-```bash
-python -m pip install -r requirements.txt
-```
+- **Missing configuration:** confirm `.env` exists at the project root and
+  contains `API_ID`, `API_HASH`, `DB_PASSWORD`, and `ADMIN_BOT_TOKEN`.
+- **PostgreSQL connection error:** verify the PostgreSQL service, database
+  role/password, and `DB_*` settings.
+- **No groups listed:** start the UserBot and wait for dialog synchronization;
+  only groups and supergroups are registered.
+- **Admin send remains queued:** keep `run.py` running; that process owns the
+  Telethon session and drains PostgreSQL send queues.
+- **Panel login reports a configuration error:** set a non-empty `PANEL_TOKEN`
+  in the project-root `.env` file, then restart `run_panel.py`.
+- **Panel API authentication fails:** pass the configured `PANEL_TOKEN` in the
+  `X-Panel-Token` header.

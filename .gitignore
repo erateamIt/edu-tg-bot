@@ -3,6 +3,10 @@
 
 ### dotenv ###
 .env
+*.session
+media_queue/
+data/backups/*.json
+data/exports/*.json
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
@@ -62,11 +66,8 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
+# Runtime logs
 *.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
 
 # Flask stuff:
 instance/
