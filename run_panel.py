@@ -11,3 +11,4 @@ if __name__ == "__main__":
     configure_logging()
     db.init_db()
     uvicorn.run(app, host=config.PANEL_HOST, port=config.PANEL_PORT, reload=False)
+
