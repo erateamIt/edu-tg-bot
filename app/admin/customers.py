@@ -85,10 +85,15 @@ def show_customer_detail(chat_id, customer_id):
         part for part in (customer["first_name"], customer["last_name"]) if part
     ) or "Nomsiz mijoz"
     username = f"@{customer['username']}" if customer["username"] else "username yo‘q"
+    tag_rows = db.list_customer_tags(customer_id)
+    tag_summary = ", ".join(
+        f"{tag['name']} ({'🤖 Automatic' if (tag.get('source') or 'manual') in {'keyword', 'ai'} else '👨‍💼 Manual'})"
+        for tag in tag_rows
+    ) if tag_rows else "yo‘q"
     text = (
         f"👤 {name}\n🆔 {customer['telegram_id']}\n🔗 {username}\n\n"
         f"Status: {customer_status_label(customer['lead_status'])}\n"
-        f"Tags: {', '.join(customer['tags']) or 'yo‘q'}\n\n"
+        f"Tags: {tag_summary}\n\n"
         f"Oxirgi xabar: {customer['last_message'] or '—'}\n"
         f"Vaqt: {ago(customer['last_message_at'])}"
     )

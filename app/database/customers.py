@@ -95,10 +95,10 @@ def list_customers(limit=100):
             cur.execute("SELECT * FROM customers ORDER BY updated_at DESC LIMIT %s", (limit,))
             return cur.fetchall()
 
-def set_customer_status(customer_id, status):
+def set_customer_status(customer_id, status, status_source="manual"):
     with get_db() as con:
         with con.cursor() as cur:
             cur.execute(
-                "UPDATE customers SET lead_status=%s, updated_at=%s WHERE id=%s",
-                (status, now_iso(), customer_id),
+                "UPDATE customers SET lead_status=%s, status_source=%s, updated_at=%s WHERE id=%s",
+                (status, status_source, now_iso(), customer_id),
             )

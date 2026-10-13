@@ -1,4 +1,6 @@
 """PostgreSQL schema initialization."""
+from datetime import datetime, timezone
+
 from .connection import get_db
 
 
@@ -15,6 +17,7 @@ def init_db():
                 phone TEXT,
                 status TEXT NOT NULL DEFAULT 'new',
                 lead_status TEXT NOT NULL DEFAULT 'new',
+                status_source TEXT NOT NULL DEFAULT 'manual',
                 first_message TEXT,
                 last_message TEXT,
                 last_message_at TEXT,
@@ -73,12 +76,16 @@ def init_db():
             CREATE TABLE IF NOT EXISTS tags (
                 id BIGSERIAL PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
+                slug TEXT UNIQUE,
+                description TEXT,
                 created_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS customer_tags (
                 customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
                 tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+                source TEXT NOT NULL DEFAULT 'manual',
+                confidence NUMERIC(4,2) DEFAULT 1.00,
                 created_at TEXT NOT NULL,
                 PRIMARY KEY(customer_id, tag_id)
             );
@@ -117,6 +124,8 @@ def init_db():
                 created_at TEXT NOT NULL
             );
 
+            ALTER TABLE customers
+                ADD COLUMN IF NOT EXISTS status_source TEXT NOT NULL DEFAULT 'manual';
             ALTER TABLE scheduled_messages
                 ALTER COLUMN group_telegram_id DROP NOT NULL;
             ALTER TABLE scheduled_messages
@@ -129,10 +138,22 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS media_path TEXT;
             ALTER TABLE scheduled_messages
                 ADD COLUMN IF NOT EXISTS caption TEXT;
+            ALTER TABLE tags
+                ADD COLUMN IF NOT EXISTS slug TEXT;
+            ALTER TABLE tags
+                ADD COLUMN IF NOT EXISTS description TEXT;
+            ALTER TABLE customer_tags
+                ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+            ALTER TABLE customer_tags
+                ADD COLUMN IF NOT EXISTS confidence NUMERIC(4,2) DEFAULT 1.00;
 
             UPDATE scheduled_messages
             SET recipient_id=group_telegram_id
             WHERE recipient_id IS NULL AND group_telegram_id IS NOT NULL;
+
+            UPDATE tags
+            SET slug=LOWER(REPLACE(REPLACE(name, ' ', '_'), '-', '_'))
+            WHERE slug IS NULL OR slug = '';
 
             CREATE INDEX IF NOT EXISTS idx_messages_customer ON messages(customer_id);
             CREATE INDEX IF NOT EXISTS idx_messages_sent_at ON messages(sent_at);
@@ -144,6 +165,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
             CREATE INDEX IF NOT EXISTS idx_scheduled_messages_due
                 ON scheduled_messages(enabled, run_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug) WHERE slug IS NOT NULL;
             """)
             cur.execute(
                 "ALTER TABLE customers ADD COLUMN IF NOT EXISTS "
@@ -170,6 +192,9 @@ O‘quv markazimizga xush kelibsiz.
 Batafsil ma’lumot uchun kurs nomini yozing.""",
                 "monitor_minutes": "5",
                 "auto_reply_enabled": "true",
+                "auto_tag_enabled": "true",
+                "auto_tag_min_confidence": "0.70",
+                "auto_tag_ai_enabled": "false",
                 "report_time": "21:00",
                 "report_timezone": "Asia/Tashkent",
             }
@@ -178,4 +203,25 @@ Batafsil ma’lumot uchun kurs nomini yozing.""",
                     "INSERT INTO settings(key,value) VALUES(%s,%s) "
                     "ON CONFLICT(key) DO NOTHING",
                     (key, value),
+                )
+
+            default_tags = [
+                ("🐍 Python", "python", "Python course interest"),
+                ("💻 Backend", "backend", "Backend development interest"),
+                ("🌐 Frontend", "frontend", "Frontend development interest"),
+                ("🇬🇧 IELTS", "ielts", "IELTS course interest"),
+                ("📚 English", "english", "English course interest"),
+                ("💰 Price", "price", "Pricing questions"),
+                ("📍 Location", "location", "Location questions"),
+                ("📅 Course Date", "course_date", "Course start date questions"),
+                ("🔥 Interested", "interested", "Customer expresses interest"),
+                ("🟢 Registered", "registered", "Customer already registered"),
+                ("🔴 Not Interested", "not_interested", "Customer not interested"),
+                ("❓ General Question", "general", "General question"),
+            ]
+            for name, slug, description in default_tags:
+                cur.execute(
+                    "INSERT INTO tags(name, slug, description, created_at) VALUES(%s,%s,%s,%s) "
+                    "ON CONFLICT(name) DO NOTHING",
+                    (name, slug, description, datetime.now(timezone.utc).isoformat()),
                 )

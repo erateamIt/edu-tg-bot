@@ -45,7 +45,10 @@ from .auto_reply import (
 )
 from .tags import (
     add_customer_tag,
+    ensure_tag,
+    get_tag_by_slug,
     list_customer_tags,
+    list_tags,
     remove_customer_tag,
 )
 from .logs import add_log, list_logs_page
@@ -74,8 +77,9 @@ __all__ = [
     "advance_scheduled_message", "claim_due_scheduled",
     "create_scheduled_message", "list_scheduled", "add_auto_reply_rule", "delete_auto_reply_rule",
     "get_matching_auto_reply", "list_auto_reply_rules",
-    "set_auto_reply_rule_enabled", "add_customer_tag",
-    "list_customer_tags", "remove_customer_tag", "add_log", "list_logs_page",
+    "set_auto_reply_rule_enabled", "add_customer_tag", "ensure_tag",
+    "get_tag_by_slug", "list_tags", "list_customer_tags", "remove_customer_tag",
+    "add_log", "list_logs_page",
     "claim_daily_report", "get_daily_stats", "claim_group_message_job",
     "claim_outgoing_message", "complete_group_message_job",
     "enqueue_group_message", "enqueue_outgoing_message",

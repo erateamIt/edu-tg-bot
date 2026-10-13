@@ -2,6 +2,7 @@
 import logging
 
 from app import database as db
+from app.auto_tag import auto_tag_customer
 from app.core import config
 from .client import AUTO_REPLY_IDS
 from app.utils.datetime import iso
@@ -17,7 +18,7 @@ async def incoming_handler(event):
     if not sender or getattr(sender, "bot", False):
         return
 
-    text = event.raw_text.strip()
+    text = (event.raw_text or "").strip()
     if not text:
         return
 
@@ -38,6 +39,11 @@ async def incoming_handler(event):
         "user",
         sender.id,
     )
+
+    try:
+        auto_tag_customer(customer_id, text)
+    except Exception:
+        log.exception("Automatic tagging failed for customer=%s", customer_id)
 
     log.info("New customer message: tg_id=%s", sender.id)
 
